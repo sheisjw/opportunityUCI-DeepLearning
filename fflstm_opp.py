@@ -43,7 +43,26 @@ plt.style.use('ggplot')
 #     sigma = np.std(dataset,axis = 0)
 #     return (dataset - mu)/sigma
 
-
+label_map = [
+    (0,      'Other'),
+    (406516, 'Open Door 1'),
+    (406517, 'Open Door 2'),
+    (404516, 'Close Door 1'),
+    (404517, 'Close Door 2'),
+    (406520, 'Open Fridge'),
+    (404520, 'Close Fridge'),
+    (406505, 'Open Dishwasher'),
+    (404505, 'Close Dishwasher'),
+    (406519, 'Open Drawer 1'),
+    (404519, 'Close Drawer 1'),
+    (406511, 'Open Drawer 2'),
+    (404511, 'Close Drawer 2'),
+    (406508, 'Open Drawer 3'),
+    (404508, 'Close Drawer 3'),
+    (408512, 'Clean Table'),
+    (407521, 'Drink from Cup'),
+    (405506, 'Toggle Switch')
+]
 def windowz(data, size):
     start = 0
     while start < len(data):
@@ -255,9 +274,11 @@ correct_pred = tf.equal(tf.argmax(pred_Y, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_pred, dtype=tf.float32))
 
 
-training_epochs = 5
-loss_over_time = np.zeros(training_epochs)
-accuracy_over_time = np.zeros(training_epochs)
+training_epochs = 3
+loss_over_time_train = np.zeros(training_epochs)
+accuracy_over_time_train = np.zeros(training_epochs)
+loss_over_time_test = np.zeros(training_epochs)
+accuracy_over_time_test = np.zeros(training_epochs)
 total_batches = train_x.shape[0] // config.batch_size
 b = 0
 best_accuracy = 0.0
@@ -268,8 +289,10 @@ with tf.Session() as sess:
     # Keep training until reach max iterations
     # cost_history = np.empty(shape=[0],dtype=float)
     for epoch in range(training_epochs):
-        cost_history = np.empty(shape=[0],dtype=float)
-        accuracy_history = np.empty(shape=[0],dtype=float)
+        cost_history_train = np.empty(shape=[0],dtype=float)
+        accuracy_history_train = np.empty(shape=[0],dtype=float)
+        cost_history_test = np.empty(shape=[0],dtype=float)
+        accuracy_history_test = np.empty(shape=[0],dtype=float)
         for b in range(total_batches):
             offset = (b * config.batch_size) % (train_y.shape[0] - config.batch_size)
             batch_x = train_x[offset:(offset + config.batch_size), :, :]
@@ -278,16 +301,17 @@ with tf.Session() as sess:
             # print("batch_x shape =",batch_x.shape
             # print("batch_y shape =",batch_y.shape
 
-            _, c = sess.run([optimizer, cost],feed_dict={X: batch_x, Y : batch_y})
-            _, acc = sess.run([optimizer, accuracy],feed_dict={X: batch_x, Y : batch_y})
-            cost_history = np.append(cost_history,c)
-            accuracy_history = np.append(accuracy_history, acc)
-        loss_over_time[epoch] = np.mean(cost_history)
-        accuracy_over_time[epoch] = np.mean(accuracy_history)
+            _, c, acc = sess.run([optimizer, cost, accuracy],feed_dict={X: batch_x, Y : batch_y})
+            cost_history_train = np.append(cost_history_train,c)
+            accuracy_history_train = np.append(accuracy_history_train, acc)
+        loss_over_time_train[epoch] = np.mean(cost_history_train)
+        accuracy_over_time_train[epoch] = np.mean(accuracy_history_train)
 
-        print("Epoch: ",epoch," Training Loss: ",np.mean(cost_history)," Training Accuracy: ", sess.run(accuracy, feed_dict={X: train_x, Y: train_y}))
+        print("Epoch: ",epoch," Training Loss: ",loss_over_time_train[epoch]," Training Accuracy: ", accuracy_over_time_train[epoch])
 
         pred_out, accuracy_out, loss_out = sess.run([pred_Y, accuracy, cost], feed_dict={X: test_x, Y: test_y})
+        loss_over_time_test[epoch] = loss_out
+        accuracy_over_time_test[epoch] = accuracy_out
         best_accuracy = max(best_accuracy, accuracy_out)
         print("Training iter: {},".format(epoch) +
               "Test accuracy : {},".format(accuracy_out) +
@@ -333,22 +357,63 @@ with tf.Session() as sess:
         print("wrong dataset")
     # if dataset=="dap":
     #     print("f1_score",metrics.f1_score(y_true, y_pred)
-    print("confusion_matrix")
-    print(metrics.confusion_matrix(y_true, y_pred))
+
     plt.figure(1)
-    plt.plot(loss_over_time)
+    plt.plot(loss_over_time_train)
     plt.title("Loss value over epochs (FFLSTM DG)")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.show()
 
     plt.figure(2)
-    plt.plot(accuracy_over_time)
+    plt.plot(accuracy_over_time_train)
     plt.title("Accuracy value over epochs (FFLSTM DG)")
     plt.xlabel("Epoch")
     plt.ylabel("Accuracy")
     plt.show()
 
+    plt.figure(3)
+    #indep_train_axis = np.array(range(config.batch_size, (len(loss_over_time_train)+1)*config.batch_size, config.batch_size))
+    plt.plot(loss_over_time_train,   "b--", label="Train losses")
+    plt.plot(accuracy_over_time_train, "g--", label="Train accuracies")
+    #indep_test_axis = np.array(range(config.batch_size, (len(loss_over_time_test)+1)*config.batch_size, config.batch_size))
+    plt.plot(loss_over_time_test,     "b-", label="Test losses")
+    plt.plot(accuracy_over_time_test, "g-", label="Test accuracies")
+
+    plt.title("Training session's progress over iterations")
+    plt.legend(loc='upper right', shadow=True)
+    plt.ylabel('Training Progress (Loss or Accuracy values)')
+    plt.xlabel('Training iteration')
+
+    plt.show()
+
+    print("confusion_matrix")
+    confusion_matrix = metrics.confusion_matrix(y_true, y_pred)
+    print(confusion_matrix)
+    normalised_confusion_matrix = np.array(confusion_matrix, dtype=np.float32)/np.sum(confusion_matrix)*100
+
+    print("")
+    print("Confusion matrix (normalised to % of total test data):")
+    print(normalised_confusion_matrix)
+    print("Note: training and testing data is not equally distributed amongst classes, ")
+    # Plot Results:
+    # plt.figure(4)
+    # plt.imshow(
+    #     normalised_confusion_matrix,
+    #     interpolation='nearest',
+    #     cmap=plt.cm.rainbow
+    # )
+    # plt.title("Confusion matrix \n(normalised to % of total test data)")
+    # plt.colorbar()
+    # tick_marks = np.arange(18)
+    # plt.xticks(tick_marks, label_map, rotation=90)
+    # plt.yticks(tick_marks, label_map)
+    # plt.tight_layout()
+    # plt.ylabel('True label')
+    # plt.xlabel('Predicted label')
+    # plt.show()
+
+    #![png](LSTM_files/LSTM_16_0.png)
 #######################################################################################
 #### micro- macro- weighted explanation ###############################################
 #                                                                                     #
