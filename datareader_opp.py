@@ -15,7 +15,19 @@ class data_reader:
     def __init__(self, dataset):
         if dataset =='opp':
             self.data, self.idToLabel = self.readOpportunity()
+            self.save_data_csv(dataset)
             self.save_data(dataset)
+        else:
+            print('Not supported yet')
+            sys.exit(0)
+
+    def save_data_csv(self, dataset):
+        if dataset == 'opp':
+            for key in self.data:
+                for field in self.data[key]:
+                    np.savetxt('data_ori_'+key+field+'.csv', self.data[key][field], delimiter=',')
+                    print(key+field,self.data[key][field].shape)
+            print('Saved in csv.')
         else:
             print('Not supported yet')
             sys.exit(0)
@@ -89,7 +101,7 @@ class data_reader:
         labels = []
         for i, filename in enumerate(filelist):
             print('Reading file %d of %d' % (i+1, len(filelist)))
-            with open('C:/Users/AT121-HB/PycharmProjects/deeplearning/Deep-Learning-for-Human-Activity-Recognition/Datareader/dataset/%s' % filename, 'r') as f:
+            with open('/Users/JinWei/Downloads/OpportunityUCIDataset/dataset/%s' % filename, 'r') as f:
                 reader = csv.reader(f, delimiter=' ')
                 for line in reader:
                     elem = []
@@ -102,5 +114,5 @@ class data_reader:
         return {'inputs': np.asarray(data), 'targets': np.asarray(labels, dtype=int)+1}
 
 if __name__ == "__main__":
-    print('Reading %s ' % (sys.argv[1]))
-    dr = data_reader(sys.argv[1])
+    print('Reading opportunity dataset')
+    dr = data_reader('opp')
