@@ -42,6 +42,7 @@ plt.style.use('ggplot')
 #     mu = np.mean(dataset,axis = 0)
 #     sigma = np.std(dataset,axis = 0)
 #     return (dataset - mu)/sigma
+#python /Users/m193-hb/PycharmProjects/oppUCIDeepLearning/opportunityUCI-DeepLearning/fflstm_opp.py opp
 
 label_map = [
     (0,      'Other'),
@@ -177,7 +178,7 @@ if len(sys.argv)<2:
 
 dataset = sys.argv[1]
 if dataset == "opp":
-    path = os.path.join(os.path.expanduser('~'), 'Downloads', 'OpportunityUCIDataset', 'opportunity.h5')
+    path = os.path.join(os.path.expanduser('~'), 'Downloads', 'OpportunityUCIDataset', 'opportunity_replace.h5')
 else:
     print("Dataset not supported yet")
     sys.exit()
@@ -217,9 +218,9 @@ print(np.unique(y_train))
 print(np.unique(y_test))
 unq = np.unique(y_test)
 
-input_width = 23
+input_width = 15
 if dataset == "opp":
-    input_width = 23
+    input_width = 15
     print("segmenting signal...")
     train_x, train_y = segment_opp(x_train,y_train,input_width)
     test_x, test_y = segment_opp(x_test,y_test,input_width)
@@ -274,7 +275,7 @@ correct_pred = tf.equal(tf.argmax(pred_Y, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_pred, dtype=tf.float32))
 
 
-training_epochs = 3
+training_epochs = 30
 loss_over_time_train = np.zeros(training_epochs)
 accuracy_over_time_train = np.zeros(training_epochs)
 loss_over_time_test = np.zeros(training_epochs)
@@ -381,15 +382,17 @@ with tf.Session() as sess:
     plt.plot(accuracy_over_time_test, "g-", label="Test accuracies")
 
     plt.title("Training session's progress over iterations")
-    plt.legend(loc='upper right', shadow=True)
+    plt.legend(shadow=True)
     plt.ylabel('Training Progress (Loss or Accuracy values)')
     plt.xlabel('Training iteration')
 
     plt.show()
 
-    print("confusion_matrix")
     confusion_matrix = metrics.confusion_matrix(y_true, y_pred)
-    print(confusion_matrix)
+    with open('out.txt', 'w') as f:
+        print >> f, 'Filename:', confusion_matrix
+
+    print("confusion_matrix")
     normalised_confusion_matrix = np.array(confusion_matrix, dtype=np.float32)/np.sum(confusion_matrix)*100
 
     print("")
