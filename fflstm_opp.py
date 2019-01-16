@@ -1,32 +1,3 @@
-## WE USE THE HIGHER LEVEL TENSORFLOW LIBRARY CALLED TF.CONTRIB WHICH HAS AN LSTM CELL
-## IMPLEMENTED. ALSO, A SOFTWARE TEMPLATE COMING WITH MIT LICENCE FOR 1 LAYER MNIST DATASET
-## IMPLEMENTATION WAS USED AS AN INITIAL TEMPLATE
-
-
-# https://github.com/guillaume-chevalier/LSTM-Human-Activity-Recognition
-# The MIT License (MIT)
-#
-# Copyright (c) 2016 Guillaume Chevalier
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
-
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -38,31 +9,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
-# def feature_normalize(dataset):
-#     mu = np.mean(dataset,axis = 0)
-#     sigma = np.std(dataset,axis = 0)
-#     return (dataset - mu)/sigma
 
-label_map = [
-    (0,      'Other'),
-    (406516, 'Open Door 1'),
-    (406517, 'Open Door 2'),
-    (404516, 'Close Door 1'),
-    (404517, 'Close Door 2'),
-    (406520, 'Open Fridge'),
-    (404520, 'Close Fridge'),
-    (406505, 'Open Dishwasher'),
-    (404505, 'Close Dishwasher'),
-    (406519, 'Open Drawer 1'),
-    (404519, 'Close Drawer 1'),
-    (406511, 'Open Drawer 2'),
-    (404511, 'Close Drawer 2'),
-    (406508, 'Open Drawer 3'),
-    (404508, 'Close Drawer 3'),
-    (408512, 'Clean Table'),
-    (407521, 'Drink from Cup'),
-    (405506, 'Toggle Switch')
-]
 def windowz(data, size):
     start = 0
     while start < len(data):
@@ -161,7 +108,6 @@ def LSTM_Network(_X, config):
     return tf.matmul(lstm_last_output, config.W['output']) + config.biases['output']
 
 
-
 print("starting...")
 start_time = time.time()
 
@@ -174,16 +120,14 @@ if len(sys.argv)<2:
     print("Correct use:python script.py <valid_dataset>")
     sys.exit()
 
-
 dataset = sys.argv[1]
 if dataset == "opp":
-    path = os.path.join(os.path.expanduser('~'), 'Downloads', 'OpportunityUCIDataset', 'opportunity.h5')
+    path = os.path.join(os.path.expanduser('~'), 'Desktop', 'opportunity.h5')
 else:
     print("Dataset not supported yet")
     sys.exit()
 
 f = h5py.File(path, 'r')
-
 
 x_train = f.get('train').get('inputs')[()]
 y_train = f.get('train').get('targets')[()]
@@ -200,17 +144,6 @@ print(x_test.shape, y_test.shape,
 print("x_test shape =" ,x_test.shape)
 print("y_test shape =",y_test.shape)
 print("the dataset is therefore properly normalised, as expected.")
-
-if dataset == "dap":
-    # downsample to 30 Hz
-    x_train = x_train[::2,:]
-    y_train = y_train[::2]
-    x_test = x_test[::2,:]
-    y_test = y_test[::2]
-    print("x_train shape(downsampled) = ", x_train.shape)
-    print("y_train shape(downsampled) =",y_train.shape)
-    print("x_test shape(downsampled) =" ,x_test.shape)
-    print("y_test shape(downsampled) =",y_test.shape)
 
 
 print(np.unique(y_train))
@@ -263,60 +196,82 @@ pred_Y = LSTM_Network(X, config)
 l2 = config.lambda_loss_amount * \
     sum(tf.nn.l2_loss(tf_var) for tf_var in tf.trainable_variables())
 # Softmax loss and L2
-cost = tf.reduce_mean(
-    tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=pred_Y)) #+ l2
-# optimizer = tf.train.AdagradOptimizer(
-#     learning_rate=config.learning_rate).minimize(cost)
+with tf.name_scope('loss'):
+    cost = tf.reduce_mean(
+        tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=pred_Y))  # + l2
+tf.summary.scalar('loss', cost)
+
 optimizer = tf.train.AdamOptimizer(
     learning_rate=config.learning_rate).minimize(cost)
 
-correct_pred = tf.equal(tf.argmax(pred_Y, 1), tf.argmax(Y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_pred, dtype=tf.float32))
+with tf.name_scope('accuracy'):
+    with tf.name_scope('correct_prediction'):
+        correct_pred = tf.equal(tf.argmax(pred_Y, 1), tf.argmax(Y, 1))
+    with tf.name_scope('accuracy'):
+        accuracy = tf.reduce_mean(tf.cast(correct_pred, dtype=tf.float32))
+tf.summary.scalar('accuracy', accuracy)
 
+merged = tf.summary.merge_all()
 
-training_epochs = 3
+training_epochs = 10
 loss_over_time_train = np.zeros(training_epochs)
 accuracy_over_time_train = np.zeros(training_epochs)
 loss_over_time_test = np.zeros(training_epochs)
 accuracy_over_time_test = np.zeros(training_epochs)
 total_batches = train_x.shape[0] // config.batch_size
-b = 0
 best_accuracy = 0.0
 # Launch the graph
 with tf.Session() as sess:
+    # Init summary
+    train_writer = tf.summary.FileWriter('logs/train', sess.graph)
+    test_writer = tf.summary.FileWriter('logs/test')
     # sess.run(init)
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     # Keep training until reach max iterations
     # cost_history = np.empty(shape=[0],dtype=float)
+    i = 0
     for epoch in range(training_epochs):
         cost_history_train = np.empty(shape=[0],dtype=float)
         accuracy_history_train = np.empty(shape=[0],dtype=float)
         cost_history_test = np.empty(shape=[0],dtype=float)
         accuracy_history_test = np.empty(shape=[0],dtype=float)
-        for b in range(total_batches):
-            offset = (b * config.batch_size) % (train_y.shape[0] - config.batch_size)
+        for step in range(total_batches):
+            offset = (step * config.batch_size) % (train_y.shape[0] - config.batch_size)
             batch_x = train_x[offset:(offset + config.batch_size), :, :]
             batch_y = train_y[offset:(offset + config.batch_size), :]
 
             # print("batch_x shape =",batch_x.shape
             # print("batch_y shape =",batch_y.shape
 
-            _, c, acc = sess.run([optimizer, cost, accuracy],feed_dict={X: batch_x, Y : batch_y})
+            train_summary, _, c, acc = sess.run([merged, optimizer, cost, accuracy], feed_dict={X: batch_x, Y : batch_y})
+            # Add into train_writer, view in tensorboard
+            train_writer.add_summary(train_summary, i)
+
             cost_history_train = np.append(cost_history_train,c)
             accuracy_history_train = np.append(accuracy_history_train, acc)
+            i += 1
+
         loss_over_time_train[epoch] = np.mean(cost_history_train)
         accuracy_over_time_train[epoch] = np.mean(accuracy_history_train)
 
-        print("Epoch: ",epoch," Training Loss: ",loss_over_time_train[epoch]," Training Accuracy: ", accuracy_over_time_train[epoch])
-
-        pred_out, accuracy_out, loss_out = sess.run([pred_Y, accuracy, cost], feed_dict={X: test_x, Y: test_y})
+        print("Epoch: {},".format(epoch) +
+              "Train accuracy : {},".format(accuracy_over_time_train[epoch]) +
+              "Train Loss : {}".format(loss_over_time_train[epoch]))
+        # after every epoch, we test the model with the test data
+        test_summary, pred_out, accuracy_out, loss_out = sess.run([merged, pred_Y, accuracy, cost], feed_dict={X: test_x, Y: test_y})
         loss_over_time_test[epoch] = loss_out
         accuracy_over_time_test[epoch] = accuracy_out
         best_accuracy = max(best_accuracy, accuracy_out)
-        print("Training iter: {},".format(epoch) +
+        print("Epoch: {},".format(epoch) +
               "Test accuracy : {},".format(accuracy_out) +
-              "Loss : {}".format(loss_out))
+              "Test Loss : {}".format(loss_out))
         best_accuracy = max(best_accuracy, accuracy_out)
+        # Add into test_writer, view in tensorboard
+        test_writer.add_summary(test_summary, i)
+
+        # Save the info into a file
+        # merged = tf.summary.merge_all()
+        writer = tf.summary.FileWriter('logs/')
 
     print("Testing Accuracy:", sess.run(accuracy, feed_dict={X: test_x, Y: test_y}))
     print("Final test accuracy: {}".format(accuracy_out))
@@ -328,51 +283,16 @@ with tf.Session() as sess:
     val_accuracy, y_pred = sess.run([accuracy, y_p], feed_dict={X:test_x, Y:test_y})
     print("Validation accuracy:", val_accuracy)
     y_true = np.argmax(test_y,1)
-    # print("Precision,micro", metrics.precision_score(y_true, y_pred,average="micro")
-    # print("Precision,macro", metrics.precision_score(y_true, y_pred,average="macro")
-    # print("Precision,weighted", metrics.precision_score(y_true, y_pred,average="weighted")
-    # #print("Precision,samples", metrics.precision_score(y_true, y_pred,average="samples")
-    # print("Recall_micro", metrics.recall_score(y_true, y_pred, average="micro")
-    # print("Recall_macro", metrics.recall_score(y_true, y_pred, average="macro")
-    # print("Recall_weighted", metrics.recall_score(y_true, y_pred, average="weighted")
-    # #print("Recall_samples", metrics.recall_score(y_true, y_pred, average="samples")
-    # print("f1_score_micro", metrics.f1_score(y_true, y_pred, average="micro")
-    # print("f1_score_macro", metrics.f1_score(y_true, y_pred, average="macro")
-    # print("f1_score_weighted", metrics.f1_score(y_true, y_pred, average="weighted")
-    #print("f1_score_samples", metrics.f1_score(y_true, y_pred, average="samples")
+
     if dataset=="opp":
         #print("f1_score_mean", metrics.f1_score(y_true, y_pred, average="micro")
-        print("f1_score_w", metrics.f1_score(y_true, y_pred, average="weighted"))
-
-        print("f1_score_m", metrics.f1_score(y_true, y_pred, average="macro"))
+        print("f1_score_weighted", metrics.f1_score(y_true, y_pred, average="weighted"))
+        print("f1_score_macro", metrics.f1_score(y_true, y_pred, average="macro"))
         # print("f1_score_per_class", metrics.f1_score(y_true, y_pred, average=None)
-    elif dataset=="dap":
-        print("f1_score_m", metrics.f1_score(y_true, y_pred, average="macro"))
-    elif dataset=="sph":
-        print("f1_score_mean", metrics.f1_score(y_true, y_pred, average="micro"))
-        print("f1_score_w", metrics.f1_score(y_true, y_pred, average="weighted"))
-
-        print("f1_score_m", metrics.f1_score(y_true, y_pred, average="macro"))
     else:
         print("wrong dataset")
-    # if dataset=="dap":
-    #     print("f1_score",metrics.f1_score(y_true, y_pred)
 
     plt.figure(1)
-    plt.plot(loss_over_time_train)
-    plt.title("Loss value over epochs (FFLSTM DG)")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.show()
-
-    plt.figure(2)
-    plt.plot(accuracy_over_time_train)
-    plt.title("Accuracy value over epochs (FFLSTM DG)")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.show()
-
-    plt.figure(3)
     #indep_train_axis = np.array(range(config.batch_size, (len(loss_over_time_train)+1)*config.batch_size, config.batch_size))
     plt.plot(loss_over_time_train,   "b--", label="Train losses")
     plt.plot(accuracy_over_time_train, "g--", label="Train accuracies")
@@ -381,21 +301,24 @@ with tf.Session() as sess:
     plt.plot(accuracy_over_time_test, "g-", label="Test accuracies")
 
     plt.title("Training session's progress over iterations")
-    plt.legend(loc='upper right', shadow=True)
+    plt.legend(shadow=True)
     plt.ylabel('Training Progress (Loss or Accuracy values)')
     plt.xlabel('Training iteration')
 
     plt.show()
 
-    print("confusion_matrix")
     confusion_matrix = metrics.confusion_matrix(y_true, y_pred)
-    print(confusion_matrix)
+    print("confusion_matrix: /n", confusion_matrix)
     normalised_confusion_matrix = np.array(confusion_matrix, dtype=np.float32)/np.sum(confusion_matrix)*100
-
     print("")
     print("Confusion matrix (normalised to % of total test data):")
     print(normalised_confusion_matrix)
     print("Note: training and testing data is not equally distributed amongst classes, ")
+    with open('out_fflstm.txt', 'w') as f:
+        #print >> f, 'Confusion Matrix: ', confusion_matrix
+        #print >> f, 'Normalised Confusion Matrix: ', ormalised_confusion_matrix
+        print('Confusion Matrix:', confusion_matrix, file=f)
+        print('Normalised Confusion Matrix:', normalised_confusion_matrix, file=f)
     # Plot Results:
     # plt.figure(4)
     # plt.imshow(
@@ -434,4 +357,4 @@ with tf.Session() as sess:
 
 
 print("--- %s seconds ---" % (time.time() - start_time))
-print("done.")
+print("Feed-forward LSTM Opportunity Done")
